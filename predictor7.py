@@ -59,7 +59,7 @@ with col1:
         "年龄 (岁)", 
         min_value=0.0, 
         max_value=120.0,
-        value=65.0, 
+        value=0.0, 
         step=1.0, 
         format="%.2f",
         help="患者年龄"
@@ -69,7 +69,7 @@ with col1:
         "入院NIHSS评分", 
         min_value=0.0, 
         max_value=42.0,
-        value=5.0, 
+        value=0.0, 
         step=1.0, 
         format="%.2f",
         help="美国国立卫生研究院卒中量表评分，评估神经功能缺损程度（0-42分，分数越高病情越重）"
@@ -79,7 +79,7 @@ with col1:
         "基线收缩压 (mmHg)", 
         min_value=0.0, 
         max_value=300.0,
-        value=120.0, 
+        value=0.0, 
         step=1.0, 
         format="%.2f",
         help="入院时测量的收缩压值"
@@ -89,7 +89,7 @@ with col1:
         "发病至穿刺时间 (分钟)", 
         min_value=0.0, 
         max_value=1440.0,
-        value=120.0, 
+        value=0.0, 
         step=5.0, 
         format="%.2f",
         help="从发病到血管穿刺的时间，单位：分钟"
@@ -98,7 +98,7 @@ with col1:
     adl_total_num = st.number_input(
         "基线自理能力评分", 
         min_value=0.0, 
-        max_value=100.0,
+        max_value=0.0,
         value=50.0, 
         step=1.0, 
         format="%.2f",
@@ -123,7 +123,7 @@ with col2:
     bnp_total_num = st.number_input(
         "基线BNP (pg/mL)", 
         min_value=0.0, 
-        value=100.0, 
+        value=0.0, 
         step=10.0, 
         format="%.2f",
         help="脑钠肽水平"
@@ -132,7 +132,7 @@ with col2:
     aptt_total_num = st.number_input(
         "基线APTT (秒)", 
         min_value=0.0, 
-        value=30.0, 
+        value=0.0, 
         step=1.0, 
         format="%.2f",
         help="活化部分凝血活酶时间"
@@ -141,7 +141,7 @@ with col2:
     anc_total_num = st.number_input(
         "基线中性粒细胞计数 (×10^9/L)", 
         min_value=0.0, 
-        value=5.0, 
+        value=0.0, 
         step=0.5, 
         format="%.2f",
         help="中性粒细胞绝对值计数"
