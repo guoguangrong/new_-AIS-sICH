@@ -117,8 +117,7 @@ with st.expander("⚙️ 高级设置"):
     )
     
     if transform_adl:
-        st.info("💡 **已启用转换**：输入的自理能力评分将转换为：转换后 = 100 - 原始值")
-        st.caption("例如：原始输入100分（完全自理）→ 转换后0分（表示自理能力差）")
+        st.info("💡 **已启用转换**：输入的自理能力评分将自动转换为模型需要的格式")
 
 # 输入组件 - 按照指定顺序排列
 col1, col2 = st.columns(2)
@@ -171,13 +170,12 @@ with col1:
         value=100.0, 
         step=1.0, 
         format="%.2f",
-        help="日常生活能力评分（0-100分）。⚠️ 根据模型需要，高分可能表示自理能力差"
+        help="日常生活能力评分（0-100分）。"
     )
     
-    # 应用转换
+    # 应用转换（不显示提示）
     if transform_adl:
         adl_total_num = 100 - adl_total_input
-        st.caption(f"⚠️ 已转换：原始输入 {adl_total_input:.0f} → 模型使用 {adl_total_num:.0f}")
     else:
         adl_total_num = adl_total_input
 
@@ -310,7 +308,7 @@ if st.button("预测", type="primary"):
         opt_hours = opt_num / 60
         opt_display = f"{opt_num:.0f} 分钟 ({opt_hours:.1f} 小时)"
         
-        # 显示原始输入和转换后的值
+        # 显示输入值（不显示转换提示）
         input_summary = pd.DataFrame({
             "变量名称": ["年龄", "入院NIHSS评分", "基线收缩压", "发病至穿刺时间", "基线自理能力评分",
                         "术后留置胃管", "躁动情况", "基线BNP", "基线APTT", "基线ANC"],
@@ -318,7 +316,7 @@ if st.button("预测", type="primary"):
                       f"{nihss_admit_num} 分",
                       f"{sbp_baseline_num} mmHg",
                       opt_display,
-                      f"{adl_total_input:.0f} 分" + (f" → 转换后: {adl_total_num:.0f} 分" if transform_adl else ""),
+                      f"{adl_total_input:.0f} 分",
                       "是" if post_gastric_tube == 1 else "否",
                       agitation_map[agitation],
                       f"{bnp_total_num} pg/mL",
@@ -326,6 +324,10 @@ if st.button("预测", type="primary"):
                       f"{anc_total_num} ×10^9/L"]
         })
         st.dataframe(input_summary, use_container_width=True, hide_index=True)
+        
+        # 如果启用了转换，在摘要中显示转换说明
+        if transform_adl:
+            st.caption(f"💡 注：自理能力评分已自动转换为模型需要的格式（{adl_total_input:.0f} → {adl_total_num:.0f}）")
     
     # ==================== 诊断功能 ====================
     with st.expander("🔧 模型诊断（验证特征影响方向）"):
