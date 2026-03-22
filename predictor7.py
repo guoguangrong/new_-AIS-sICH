@@ -5,11 +5,30 @@ import numpy as np
 import pandas as pd
 from lime.lime_tabular import LimeTabularExplainer
 import streamlit.components.v1 as components
+import matplotlib.pyplot as plt
 import warnings
 warnings.filterwarnings('ignore')
 
+# 设置页面配置（必须在最前面）
+st.set_page_config(
+    page_title="急性缺血性脑卒中血管内治疗术后症状性出血转化风险预测器",
+    layout="wide"
+)
+
 # 加载模型
-model = joblib.load('xgboost.pkl')
+@st.cache_resource
+def load_model():
+    return joblib.load('xgboost.pkl')
+
+try:
+    model = load_model()
+    st.success("✅ 成功加载模型")
+except FileNotFoundError:
+    st.error("❌ xgboost.pkl 文件未找到，请确保该文件存在于项目目录中")
+    st.stop()
+except Exception as e:
+    st.error(f"❌ 模型加载失败: {e}")
+    st.stop()
 
 # 读取 CSV 数据文件
 try:
@@ -36,6 +55,20 @@ feature_names = [
     "anc_total"          # 基线ANC
 ]
 
+# 特征中文名称映射
+feature_names_cn = {
+    "age": "年龄",
+    "nihss_admit": "入院NIHSS评分",
+    "sbp_baseline": "基线收缩压",
+    "opt": "发病至穿刺时间",
+    "adl_total": "基线自理能力评分",
+    "post_gastric_tube": "术后留置胃管",
+    "agitation": "躁动情况",
+    "bnp_total": "基线BNP",
+    "aptt_total": "基线APTT",
+    "anc_total": "基线ANC"
+}
+
 # 检查数据中是否包含所有需要的特征列
 missing_features = [f for f in feature_names if f not in test_dataset.columns]
 if missing_features:
@@ -44,10 +77,6 @@ if missing_features:
 else:
     st.info(f"✅ 数据包含所有 {len(feature_names)} 个特征列")
 
-st.set_page_config(
-    page_title="急性缺血性脑卒中血管内治疗术后症状性出血转化风险预测器",
-    layout="wide"
-)
 st.title("急性缺血性脑卒中血管内治疗术后症状性出血转化风险预测器")
 st.markdown("### 请填写以下信息，点击预测获取风险评估结果")
 
@@ -59,7 +88,7 @@ with col1:
         "年龄 (岁)", 
         min_value=0.0, 
         max_value=120.0,
-        value=0.0, 
+        value=70.0, 
         step=1.0, 
         format="%.2f",
         help="患者年龄"
@@ -69,7 +98,7 @@ with col1:
         "入院NIHSS评分", 
         min_value=0.0, 
         max_value=42.0,
-        value=0.0, 
+        value=10.0, 
         step=1.0, 
         format="%.2f",
         help="美国国立卫生研究院卒中量表评分，评估神经功能缺损程度（0-42分，分数越高病情越重）"
@@ -79,7 +108,7 @@ with col1:
         "基线收缩压 (mmHg)", 
         min_value=0.0, 
         max_value=300.0,
-        value=0.0, 
+        value=130.0, 
         step=1.0, 
         format="%.2f",
         help="入院时测量的收缩压值"
@@ -89,7 +118,7 @@ with col1:
         "发病至穿刺时间 (分钟)", 
         min_value=0.0, 
         max_value=1440.0,
-        value=0.0, 
+        value=300.0, 
         step=5.0, 
         format="%.2f",
         help="从发病到血管穿刺的时间，单位：分钟"
@@ -123,7 +152,7 @@ with col2:
     bnp_total_num = st.number_input(
         "基线BNP (pg/mL)", 
         min_value=0.0, 
-        value=0.0, 
+        value=100.0, 
         step=10.0, 
         format="%.2f",
         help="脑钠肽水平"
@@ -132,7 +161,7 @@ with col2:
     aptt_total_num = st.number_input(
         "基线APTT (秒)", 
         min_value=0.0, 
-        value=0.0, 
+        value=35.0, 
         step=1.0, 
         format="%.2f",
         help="活化部分凝血活酶时间"
@@ -141,7 +170,7 @@ with col2:
     anc_total_num = st.number_input(
         "基线中性粒细胞计数 (×10^9/L)", 
         min_value=0.0, 
-        value=0.0, 
+        value=7.0, 
         step=0.5, 
         format="%.2f",
         help="中性粒细胞绝对值计数"
@@ -209,15 +238,13 @@ if st.button("预测", type="primary"):
     st.subheader("💡 健康建议")
     st.info(advice)
     
-    # 风险提示条 - 使用 st.metric 和自定义进度条
+    # 风险提示条
     st.subheader("📈 风险可视化")
     
     # 使用三列布局
     col1_metric, col2_metric, col3_metric = st.columns([2, 1, 1])
     with col1_metric:
-        # 使用 metric 显示风险概率
         st.metric("风险概率", f"{risk_prob:.1%}", delta=None)
-        # 使用简单的进度条（用 st.markdown 模拟）
         progress_width = int(risk_prob * 100)
         st.markdown(f"""
         <div style="width: 100%; background-color: #f0f0f0; border-radius: 5px; margin-top: 10px;">
@@ -251,6 +278,79 @@ if st.button("预测", type="primary"):
                       f"{anc_total_num} ×10^9/L"]
         })
         st.dataframe(input_summary, use_container_width=True, hide_index=True)
+    
+    # ==================== 诊断功能 ====================
+    with st.expander("🔧 模型诊断（验证特征影响方向）"):
+        st.markdown("### 📊 特征重要性")
+        feature_importance = pd.DataFrame({
+            '特征': [feature_names_cn.get(f, f) for f in feature_names],
+            '原始特征名': feature_names,
+            '重要性': model.feature_importances_
+        }).sort_values('重要性', ascending=False)
+        st.dataframe(feature_importance, use_container_width=True, hide_index=True)
+        
+        st.markdown("### 🧪 自理能力评分(adl_total)对风险的影响测试")
+        st.markdown("测试不同自理能力评分值对预测结果的影响（保持其他特征不变）：")
+        
+        # 测试不同adl_total值的影响
+        test_adl_values = [0, 20, 40, 60, 80, 100]
+        test_results = []
+        base_input = input_df.copy()
+        
+        for adl in test_adl_values:
+            test_input = base_input.copy()
+            test_input['adl_total'] = adl
+            # 转换为numpy数组进行预测
+            prob = model.predict_proba(test_input.values)[0][1]
+            risk_level = '高风险' if prob >= 0.7 else '中风险' if prob >= 0.3 else '低风险'
+            test_results.append({
+                '自理能力评分': adl,
+                '预测风险概率': f"{prob:.2%}",
+                '风险等级': risk_level
+            })
+        
+        st.dataframe(pd.DataFrame(test_results), use_container_width=True, hide_index=True)
+        
+        # 绘制影响趋势图
+        st.markdown("### 📈 影响趋势图")
+        fig, ax = plt.subplots(figsize=(10, 6))
+        adl_list = [r['自理能力评分'] for r in test_results]
+        prob_list = [float(r['预测风险概率'].strip('%')) / 100 for r in test_results]
+        
+        ax.plot(adl_list, prob_list, marker='o', linewidth=2, markersize=8, color='steelblue')
+        ax.set_xlabel('自理能力评分 (adl_total)', fontsize=12)
+        ax.set_ylabel('预测风险概率', fontsize=12)
+        ax.set_title('自理能力评分与预测风险概率的关系', fontsize=14)
+        ax.grid(True, alpha=0.3)
+        ax.axhline(y=0.7, color='red', linestyle='--', alpha=0.5, label='高风险阈值 (70%)')
+        ax.axhline(y=0.3, color='orange', linestyle='--', alpha=0.5, label='中风险阈值 (30%)')
+        ax.legend()
+        ax.set_ylim(0, 1)
+        
+        st.pyplot(fig)
+        plt.close(fig)
+        
+        # 诊断结论
+        first_prob = float(test_results[0]['预测风险概率'].strip('%')) / 100
+        last_prob = float(test_results[-1]['预测风险概率'].strip('%')) / 100
+        
+        st.markdown("### 📋 诊断结论")
+        if first_prob > last_prob:
+            st.success("✅ **诊断结果**：随着自理能力评分升高，风险概率降低，模型行为符合预期！")
+            st.info("💡 说明：自理能力越好（评分越高），预测的出血风险越低，这与医学常识一致。")
+        elif first_prob < last_prob:
+            st.error("⚠️ **诊断结果**：随着自理能力评分升高，风险概率升高，模型行为与预期相反！")
+            st.warning("💡 建议：请检查模型训练数据或考虑重新训练模型。")
+        else:
+            st.info("ℹ️ **诊断结果**：自理能力评分对风险概率影响不明显。")
+        
+        # 显示当前输入值的说明
+        st.markdown("### 📝 当前输入值说明")
+        st.markdown(f"""
+        - **当前自理能力评分**: {adl_total_num} 分
+        - **当前预测风险概率**: {risk_prob:.2%}
+        - **风险等级**: {pred_class}
+        """)
     
     # LIME解释
     st.subheader("🔍 LIME特征贡献解释")
@@ -296,21 +396,3 @@ if st.button("预测", type="primary"):
     # 添加使用说明
     st.markdown("---")
     st.caption("注：本预测结果仅供参考，不能替代专业医疗建议。如有疑问，请咨询专业医生。")
-
-# 检查特征重要性
-import matplotlib.pyplot as plt
-
-# 获取特征重要性
-importance = model.feature_importances_
-feature_importance_df = pd.DataFrame({
-    'feature': feature_names,
-    'importance': importance
-}).sort_values('importance', ascending=False)
-
-print(feature_importance_df)
-
-# 或者用SHAP值检查方向
-import shap
-explainer = shap.TreeExplainer(model)
-shap_values = explainer.shap_values(input_df)
-# 查看adl_total的SHAP值，正负表示对风险的影响方向
