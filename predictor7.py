@@ -27,7 +27,7 @@ feature_names = [
     "age",               # 年龄
     "nihss_admit",       # 入院NIHSS评分
     "sbp_baseline",      # 基线收缩压
-    "pre_apt",           # OPT (发病至穿刺时间)
+    "opt",               # OPT (发病至穿刺时间)
     "adl_total",         # 基线自理能力评分
     "post_gastric_tube", # 术后留置胃管
     "agitation",         # 躁动
@@ -85,7 +85,7 @@ with col1:
         help="入院时测量的收缩压值"
     )
     
-    pre_apt = st.number_input(
+    opt_num = st.number_input(
         "发病至穿刺时间 (分钟)", 
         min_value=0.0, 
         max_value=1440.0,
@@ -98,8 +98,8 @@ with col1:
     adl_total_num = st.number_input(
         "基线自理能力评分", 
         min_value=0.0, 
-        max_value=0.0,
-        value=50.0, 
+        max_value=100.0,
+        value=0.0, 
         step=1.0, 
         format="%.2f",
         help="日常生活能力评分（0-100分），分数越高自理能力越好"
@@ -154,7 +154,7 @@ if st.button("预测", type="primary"):
         age_num,             # 年龄
         nihss_admit_num,     # 入院NIHSS评分
         sbp_baseline_num,    # 基线收缩压
-        pre_apt,             # OPT (发病至穿刺时间)
+        opt_num,             # OPT (发病至穿刺时间)
         adl_total_num,       # 基线自理能力评分
         post_gastric_tube,   # 术后留置胃管
         agitation,           # 躁动
@@ -223,8 +223,8 @@ if st.button("预测", type="primary"):
     
     # 显示输入摘要
     with st.expander("查看输入信息摘要"):
-        opt_hours = pre_apt / 60
-        opt_display = f"{pre_apt:.0f} 分钟 ({opt_hours:.1f} 小时)"
+        opt_hours = opt_num / 60
+        opt_display = f"{opt_num:.0f} 分钟 ({opt_hours:.1f} 小时)"
         
         input_summary = pd.DataFrame({
             "变量名称": ["年龄", "入院NIHSS评分", "基线收缩压", "发病至穿刺时间", "基线自理能力评分",
