@@ -8,15 +8,15 @@ import streamlit.components.v1 as components
 import warnings
 warnings.filterwarnings('ignore')
 
-# 加载模型和数据 - 直接使用 data.xlsx 文件
+# 加载模型
 model = joblib.load('xgboost.pkl')
 
-# 从 Excel 文件读取数据用于 LIME 解释器
+# 读取 CSV 数据文件
 try:
-    test_dataset = pd.read_excel('data.xlsx')
-    st.success("✅ 数据文件加载成功")
+    test_dataset = pd.read_csv('data.csv')
+    st.success("✅ 成功加载 data.csv")
 except FileNotFoundError:
-    st.error("❌ data.xlsx 文件未找到，请确保该文件存在于项目目录中。")
+    st.error("❌ data.csv 文件未找到，请确保该文件存在于项目目录中")
     st.stop()
 except Exception as e:
     st.error(f"❌ 数据文件加载失败: {e}")
@@ -41,6 +41,8 @@ missing_features = [f for f in feature_names if f not in test_dataset.columns]
 if missing_features:
     st.warning(f"⚠️ 数据文件中缺少以下特征列: {missing_features}")
     st.info("LIME解释功能可能无法正常工作，但预测功能仍然可用。")
+else:
+    st.info(f"✅ 数据包含所有 {len(feature_names)} 个特征列")
 
 st.set_page_config(
     page_title="急性缺血性脑卒中血管内治疗术后症状性出血转化风险预测器",
@@ -70,7 +72,7 @@ with col1:
         value=5.0, 
         step=1.0, 
         format="%.2f",
-        help="美国国立卫生研究院卒中量表评分，评估神经功能缺损程度"
+        help="美国国立卫生研究院卒中量表评分，评估神经功能缺损程度（0-42分，分数越高病情越重）"
     )
     
     sbp_baseline_num = st.number_input(
@@ -100,7 +102,7 @@ with col1:
         value=50.0, 
         step=1.0, 
         format="%.2f",
-        help="日常生活能力评分，分数越高自理能力越好"
+        help="日常生活能力评分（0-100分），分数越高自理能力越好"
     )
 
 with col2:
@@ -172,7 +174,6 @@ if st.button("预测", type="primary"):
         st.stop()
     
     # 根据阈值划分风险等级 (3:7 = 30% 和 70%)
-    # 低风险: < 30%, 中风险: 30% - 70%, 高风险: > 70%
     if risk_prob < 0.30:
         pred_class = "低风险"
         advice = f"模型预测您的症状性出血风险概率为 {risk_prob:.1%}，属于低风险。建议继续保持当前治疗方案，定期随访。"
@@ -220,9 +221,8 @@ if st.button("预测", type="primary"):
     with col_bar3:
         st.markdown("🔵 低风险: <30%<br>🟡 中风险: 30%-70%<br>🔴 高风险: >70%", unsafe_allow_html=True)
     
-    # 显示输入摘要（按指定顺序）
+    # 显示输入摘要
     with st.expander("查看输入信息摘要"):
-        # 格式化OPT时间显示（分钟转小时）
         opt_hours = pre_apt / 60
         opt_display = f"{pre_apt:.0f} 分钟 ({opt_hours:.1f} 小时)"
         
@@ -242,20 +242,21 @@ if st.button("预测", type="primary"):
         })
         st.dataframe(input_summary, use_container_width=True, hide_index=True)
     
-    # LIME解释 - 添加错误处理
+    # LIME解释
     st.subheader("🔍 LIME特征贡献解释")
     st.markdown("下图展示了各特征对预测结果的贡献程度（红色=增加风险，蓝色=降低风险）")
     
-    # 确保训练数据包含当前使用的特征
+    # 尝试生成LIME解释
     try:
         # 检查是否有缺失的特征
         available_features = [f for f in feature_names if f in test_dataset.columns]
         
         if len(available_features) < len(feature_names):
-            st.warning(f"⚠️ LIME解释功能需要以下特征: {feature_names}")
-            st.warning(f"可用特征: {available_features}")
-            st.info("预测功能正常，但特征解释图可能无法显示。")
+            st.warning(f"⚠️ LIME解释功能需要完整的特征列")
+            st.warning(f"缺少的特征: {set(feature_names) - set(available_features)}")
+            st.info("预测功能正常，但特征解释图无法显示。")
         else:
+            # 提取训练数据用于LIME
             X_train_lime = test_dataset[feature_names].values
             
             # 创建LIME解释器
