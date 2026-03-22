@@ -99,7 +99,7 @@ with col1:
         "基线自理能力评分", 
         min_value=0.0, 
         max_value=100.0,
-        value=0.0, 
+        value=50.0, 
         step=1.0, 
         format="%.2f",
         help="日常生活能力评分（0-100分），分数越高自理能力越好"
@@ -212,10 +212,14 @@ if st.button("预测", type="primary"):
     # 风险提示条
     st.subheader("📈 风险可视化")
     
-    # 显示阈值标记
+    # 显示进度条 - 修复版本
     col_bar1, col_bar2, col_bar3 = st.columns([3, 1, 1])
     with col_bar1:
-        st.progress(risk_prob, text=f"风险概率: {risk_prob:.1%}")
+        # 先显示进度条
+        progress_bar = st.progress(0)
+        progress_bar.progress(risk_prob)
+        # 显示概率文本
+        st.caption(f"风险概率: {risk_prob:.1%}")
     with col_bar2:
         st.markdown("**阈值说明**")
     with col_bar3:
