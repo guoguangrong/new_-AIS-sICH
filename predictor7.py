@@ -3,9 +3,6 @@ import streamlit as st
 import joblib
 import numpy as np
 import pandas as pd
-from lime.lime_tabular import LimeTabularExplainer
-import streamlit.components.v1 as components
-import matplotlib.pyplot as plt
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -39,14 +36,6 @@ except Exception as e:
     st.error(f"❌ 数据文件加载失败: {e}")
     st.stop()
 
-# 读取SHAP值数据
-try:
-    shap_df = pd.read_csv('shap_values.csv')
-except FileNotFoundError:
-    shap_df = None
-except Exception as e:
-    shap_df = None
-
 # 按照指定顺序排列10个特征变量
 feature_names = [
     "age",               # 年龄
@@ -60,20 +49,6 @@ feature_names = [
     "aptt_total",        # 基线APTT
     "anc_total"          # 基线ANC
 ]
-
-# 特征中文名称映射
-feature_names_cn = {
-    "age": "年龄",
-    "nihss_admit": "入院NIHSS评分",
-    "sbp_baseline": "基线收缩压",
-    "opt": "发病至穿刺时间",
-    "adl_total": "基线自理能力评分",
-    "post_gastric_tube": "术后留置胃管",
-    "agitation": "躁动情况",
-    "bnp_total": "基线BNP",
-    "aptt_total": "基线APTT",
-    "anc_total": "基线ANC"
-}
 
 # 躁动情况映射
 agitation_map = {0: "无躁动", 1: "轻度躁动", 2: "中度躁动", 3: "重度躁动"}
@@ -94,7 +69,6 @@ st.markdown("""
     
     /* 预测结果卡片样式 */
     .prediction-card {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         border-radius: 20px;
         padding: 30px;
         text-align: center;
@@ -147,63 +121,12 @@ st.markdown("""
     hr {
         margin: 20px 0;
     }
-    
-    /* 指标卡片样式 */
-    .metric-card {
-        background: #f8f9fa;
-        border-radius: 12px;
-        padding: 15px;
-        margin-bottom: 15px;
-        border: 1px solid #e9ecef;
-        transition: all 0.3s;
-    }
-    
-    .metric-card:hover {
-        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-        transform: translateY(-2px);
-    }
-    
-    .metric-label {
-        font-size: 14px;
-        color: #6c757d;
-        margin-bottom: 8px;
-    }
-    
-    .metric-value {
-        font-size: 22px;
-        font-weight: bold;
-        color: #2c3e50;
-    }
-    
-    .metric-unit {
-        font-size: 14px;
-        color: #95a5a6;
-        margin-left: 4px;
-    }
 </style>
 """, unsafe_allow_html=True)
 
 st.title("急性缺血性脑卒中血管内治疗术后症状性出血转化风险预测器")
 st.markdown("### 请填写以下信息，点击预测获取风险评估结果")
 st.markdown("---")
-
-# 在高级设置中添加转换选项
-with st.sidebar:
-    st.markdown("### ⚙️ 设置")
-    transform_adl = st.checkbox(
-        "转换自理能力评分", 
-        value=True,
-        help="如果训练数据中高分表示自理能力差，勾选此项自动转换"
-    )
-    
-    show_diagnosis = st.checkbox(
-        "显示模型诊断信息", 
-        value=False,
-        help="勾选后显示特征重要性、趋势测试等诊断信息"
-    )
-    
-    if transform_adl:
-        st.info("💡 已启用adl_total转换")
 
 # 创建左右两列布局
 left_col, right_col = st.columns([1.2, 0.8])
@@ -258,10 +181,8 @@ with left_col:
             format="%.0f"
         )
         
-        if transform_adl:
-            adl_total_num = 100 - adl_total_input
-        else:
-            adl_total_num = adl_total_input
+        # 固定启用转换
+        adl_total_num = 100 - adl_total_input
     
     with col2:
         post_gastric_tube = st.selectbox(
@@ -374,10 +295,6 @@ with right_col:
         </div>
         """, unsafe_allow_html=True)
         
-        # 如果启用了转换，显示转换说明
-        if transform_adl:
-            st.caption(f"💡 注：自理能力评分已转换 ({adl_total_input:.0f} → {adl_total_num:.0f})")
-        
         # 显示输入摘要（折叠）
         with st.expander("查看输入信息摘要"):
             opt_hours = opt_num / 60
@@ -398,54 +315,6 @@ with right_col:
                           f"{anc_total_num:.1f} ×10^9/L"]
             })
             st.dataframe(input_summary, use_container_width=True, hide_index=True)
-        
-        # ==================== 诊断功能（仅在开关打开时显示） ====================
-        if show_diagnosis:
-            st.markdown("---")
-            st.markdown("### 🔧 模型诊断")
-            
-            # 检查训练数据中adl_total的分布
-            if 'adl_total' in test_dataset.columns and 'diagnosis' in test_dataset.columns:
-                high_risk = test_dataset[test_dataset['diagnosis'] == 1]['adl_total']
-                low_risk = test_dataset[test_dataset['diagnosis'] == 0]['adl_total']
-                
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.metric("高风险组平均adl_total", f"{high_risk.mean():.2f}")
-                with col2:
-                    st.metric("低风险组平均adl_total", f"{low_risk.mean():.2f}")
-            
-            # 测试不同adl_total值的影响
-            st.markdown("#### adl_total影响测试")
-            test_adl_values = [0, 20, 40, 60, 80, 100]
-            test_results = []
-            
-            for adl in test_adl_values:
-                test_input = input_df.copy()
-                test_input['adl_total'] = adl
-                prob = model.predict_proba(test_input.values)[0][1]
-                test_results.append({
-                    'adl_total值': adl,
-                    '风险概率': f"{prob:.2%}"
-                })
-            
-            st.dataframe(pd.DataFrame(test_results), use_container_width=True, hide_index=True)
-            
-            # 绘制趋势图
-            fig, ax = plt.subplots(figsize=(8, 4))
-            adl_list = [r['adl_total值'] for r in test_results]
-            prob_list = [float(r['风险概率'].strip('%')) / 100 for r in test_results]
-            
-            ax.plot(adl_list, prob_list, marker='o', linewidth=2, markersize=6, color='steelblue')
-            ax.set_xlabel('adl_total', fontsize=10)
-            ax.set_ylabel('风险概率', fontsize=10)
-            ax.axhline(y=0.7, color='red', linestyle='--', alpha=0.5, linewidth=1)
-            ax.axhline(y=0.3, color='orange', linestyle='--', alpha=0.5, linewidth=1)
-            ax.set_ylim(0, 1)
-            ax.grid(True, alpha=0.3)
-            
-            st.pyplot(fig)
-            plt.close(fig)
     
     else:
         # 未预测时的占位符
