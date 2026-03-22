@@ -296,3 +296,21 @@ if st.button("预测", type="primary"):
     # 添加使用说明
     st.markdown("---")
     st.caption("注：本预测结果仅供参考，不能替代专业医疗建议。如有疑问，请咨询专业医生。")
+
+# 检查特征重要性
+import matplotlib.pyplot as plt
+
+# 获取特征重要性
+importance = model.feature_importances_
+feature_importance_df = pd.DataFrame({
+    'feature': feature_names,
+    'importance': importance
+}).sort_values('importance', ascending=False)
+
+print(feature_importance_df)
+
+# 或者用SHAP值检查方向
+import shap
+explainer = shap.TreeExplainer(model)
+shap_values = explainer.shap_values(input_df)
+# 查看adl_total的SHAP值，正负表示对风险的影响方向
