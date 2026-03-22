@@ -1,0 +1,11 @@
+﻿feature,mean_abs_shap
+bnp_total,0.969956
+sbp_baseline,0.94489133
+opt,0.65082467
+aptt_total,0.54668105
+nihss_admit,0.46142125
+adl_total,0.4571292
+age,0.4347127
+agitation,0.36434063
+anc_total,0.2391179
+post_gastric_tube,0.18744974
