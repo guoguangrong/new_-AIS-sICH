@@ -44,12 +44,9 @@ except Exception as e:
 # 读取SHAP值数据
 try:
     shap_df = pd.read_csv('shap_values.csv')
-    st.success("✅ 成功加载 shap_values.csv")
 except FileNotFoundError:
-    st.warning("⚠️ shap_values.csv 文件未找到，将使用简化版诊断")
     shap_df = None
 except Exception as e:
-    st.warning(f"⚠️ SHAP文件加载失败: {e}")
     shap_df = None
 
 # 按照指定顺序排列10个特征变量
@@ -118,6 +115,13 @@ with st.expander("⚙️ 高级设置"):
     
     if transform_adl:
         st.info("💡 **已启用转换**：输入的自理能力评分将自动转换为模型需要的格式")
+    
+    # 添加诊断开关
+    show_diagnosis = st.checkbox(
+        "显示模型诊断信息", 
+        value=False,
+        help="勾选后显示特征重要性、趋势测试等诊断信息"
+    )
 
 # 输入组件 - 按照指定顺序排列
 col1, col2 = st.columns(2)
@@ -308,7 +312,6 @@ if st.button("预测", type="primary"):
         opt_hours = opt_num / 60
         opt_display = f"{opt_num:.0f} 分钟 ({opt_hours:.1f} 小时)"
         
-        # 显示输入值（不显示转换提示）
         input_summary = pd.DataFrame({
             "变量名称": ["年龄", "入院NIHSS评分", "基线收缩压", "发病至穿刺时间", "基线自理能力评分",
                         "术后留置胃管", "躁动情况", "基线BNP", "基线APTT", "基线ANC"],
@@ -329,129 +332,128 @@ if st.button("预测", type="primary"):
         if transform_adl:
             st.caption(f"💡 注：自理能力评分已自动转换为模型需要的格式（{adl_total_input:.0f} → {adl_total_num:.0f}）")
     
-    # ==================== 诊断功能 ====================
-    with st.expander("🔧 模型诊断（验证特征影响方向）"):
-        st.markdown("### 📊 训练数据分析")
-        
-        # 检查训练数据中adl_total的分布
-        if 'adl_total' in test_dataset.columns and 'diagnosis' in test_dataset.columns:
-            high_risk = test_dataset[test_dataset['diagnosis'] == 1]['adl_total']
-            low_risk = test_dataset[test_dataset['diagnosis'] == 0]['adl_total']
+    # ==================== 诊断功能（仅在开关打开时显示） ====================
+    if show_diagnosis:
+        with st.expander("🔧 模型诊断（验证特征影响方向）"):
+            st.markdown("### 📊 训练数据分析")
             
-            col1, col2 = st.columns(2)
-            with col1:
-                st.metric("高风险组平均adl_total", f"{high_risk.mean():.2f}")
-                st.metric("高风险组中位数adl_total", f"{high_risk.median():.2f}")
-            with col2:
-                st.metric("低风险组平均adl_total", f"{low_risk.mean():.2f}")
-                st.metric("低风险组中位数adl_total", f"{low_risk.median():.2f}")
-            
-            # 判断数据方向
-            if high_risk.mean() > low_risk.mean():
-                st.warning("⚠️ **训练数据显示**：高风险组平均adl_total > 低风险组")
-                st.info("这证实了训练数据中adl_total是反向编码（高分表示自理能力差）")
-                if transform_adl:
-                    st.success("✅ 已启用adl_total转换，输入将自动转换")
+            # 检查训练数据中adl_total的分布
+            if 'adl_total' in test_dataset.columns and 'diagnosis' in test_dataset.columns:
+                high_risk = test_dataset[test_dataset['diagnosis'] == 1]['adl_total']
+                low_risk = test_dataset[test_dataset['diagnosis'] == 0]['adl_total']
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.metric("高风险组平均adl_total", f"{high_risk.mean():.2f}")
+                    st.metric("高风险组中位数adl_total", f"{high_risk.median():.2f}")
+                with col2:
+                    st.metric("低风险组平均adl_total", f"{low_risk.mean():.2f}")
+                    st.metric("低风险组中位数adl_total", f"{low_risk.median():.2f}")
+                
+                # 判断数据方向
+                if high_risk.mean() > low_risk.mean():
+                    st.warning("⚠️ **训练数据显示**：高风险组平均adl_total > 低风险组")
+                    st.info("这证实了训练数据中adl_total是反向编码（高分表示自理能力差）")
+                    if transform_adl:
+                        st.success("✅ 已启用adl_total转换，输入将自动转换")
+                    else:
+                        st.warning("⚠️ 建议启用adl_total转换以获得正确结果")
                 else:
-                    st.warning("⚠️ 建议启用adl_total转换以获得正确结果")
+                    st.success("✅ 训练数据正确：高风险组平均adl_total < 低风险组")
+                    if transform_adl:
+                        st.warning("⚠️ 训练数据正确，但您启用了转换。建议关闭转换选项")
+            
+            st.markdown("### 📊 特征重要性排名")
+            if shap_df is not None:
+                shap_df['feature_cn'] = shap_df['feature'].map(feature_display_names)
+                importance_df = shap_df[['feature_cn', 'feature', 'mean_abs_shap']].sort_values('mean_abs_shap', ascending=False)
+                importance_df.columns = ['特征名称', '原始特征名', '平均绝对SHAP值']
+                st.dataframe(importance_df, use_container_width=True, hide_index=True)
+                
+                # 显示adl_total的SHAP值
+                adl_shap = shap_df[shap_df['feature'] == 'adl_total']['mean_abs_shap'].values
+                if len(adl_shap) > 0:
+                    st.info(f"**adl_total（自理能力评分）** 的平均绝对SHAP值为 **{adl_shap[0]:.4f}**")
+            
+            st.markdown("### 🧪 测试不同adl_total值的影响")
+            st.markdown("测试当前输入下，改变adl_total对预测结果的影响：")
+            
+            test_adl_values = [0, 20, 40, 60, 80, 100]
+            test_results = []
+            
+            for adl in test_adl_values:
+                test_input = input_df.copy()
+                test_input['adl_total'] = adl
+                prob = model.predict_proba(test_input.values)[0][1]
+                risk_level = '高风险' if prob >= 0.7 else '中风险' if prob >= 0.3 else '低风险'
+                test_results.append({
+                    'adl_total值': adl,
+                    '预测风险概率': f"{prob:.2%}",
+                    '风险等级': risk_level
+                })
+            
+            st.dataframe(pd.DataFrame(test_results), use_container_width=True, hide_index=True)
+            
+            # 绘制趋势图
+            fig, ax = plt.subplots(figsize=(10, 6))
+            adl_list = [r['adl_total值'] for r in test_results]
+            prob_list = [float(r['预测风险概率'].strip('%')) / 100 for r in test_results]
+            
+            ax.plot(adl_list, prob_list, marker='o', linewidth=2, markersize=8, color='steelblue')
+            ax.set_xlabel('adl_total (自理能力评分)', fontsize=12)
+            ax.set_ylabel('预测风险概率', fontsize=12)
+            ax.set_title('adl_total与预测风险概率的关系', fontsize=14)
+            ax.grid(True, alpha=0.3)
+            ax.axhline(y=0.7, color='red', linestyle='--', alpha=0.5, label='高风险阈值 (70%)')
+            ax.axhline(y=0.3, color='orange', linestyle='--', alpha=0.5, label='中风险阈值 (30%)')
+            ax.legend()
+            ax.set_ylim(0, 1)
+            
+            st.pyplot(fig)
+            plt.close(fig)
+            
+            # 判断趋势
+            if prob_list[0] > prob_list[-1]:
+                st.success("✅ **趋势正确**：adl_total越高，风险越低")
             else:
-                st.success("✅ 训练数据正确：高风险组平均adl_total < 低风险组")
-                if transform_adl:
-                    st.warning("⚠️ 训练数据正确，但您启用了转换。建议关闭转换选项")
-        
-        st.markdown("### 📊 特征重要性排名")
-        if shap_df is not None:
-            shap_df['feature_cn'] = shap_df['feature'].map(feature_display_names)
-            importance_df = shap_df[['feature_cn', 'feature', 'mean_abs_shap']].sort_values('mean_abs_shap', ascending=False)
-            importance_df.columns = ['特征名称', '原始特征名', '平均绝对SHAP值']
-            st.dataframe(importance_df, use_container_width=True, hide_index=True)
-            
-            # 显示adl_total的SHAP值
-            adl_shap = shap_df[shap_df['feature'] == 'adl_total']['mean_abs_shap'].values
-            if len(adl_shap) > 0:
-                st.info(f"**adl_total（自理能力评分）** 的平均绝对SHAP值为 **{adl_shap[0]:.4f}**")
-        
-        st.markdown("### 🧪 测试不同adl_total值的影响")
-        st.markdown("测试当前输入下，改变adl_total对预测结果的影响：")
-        
-        test_adl_values = [0, 20, 40, 60, 80, 100]
-        test_results = []
-        
-        for adl in test_adl_values:
-            test_input = input_df.copy()
-            test_input['adl_total'] = adl
-            prob = model.predict_proba(test_input.values)[0][1]
-            risk_level = '高风险' if prob >= 0.7 else '中风险' if prob >= 0.3 else '低风险'
-            test_results.append({
-                'adl_total值': adl,
-                '预测风险概率': f"{prob:.2%}",
-                '风险等级': risk_level
-            })
-        
-        st.dataframe(pd.DataFrame(test_results), use_container_width=True, hide_index=True)
-        
-        # 绘制趋势图
-        fig, ax = plt.subplots(figsize=(10, 6))
-        adl_list = [r['adl_total值'] for r in test_results]
-        prob_list = [float(r['预测风险概率'].strip('%')) / 100 for r in test_results]
-        
-        ax.plot(adl_list, prob_list, marker='o', linewidth=2, markersize=8, color='steelblue')
-        ax.set_xlabel('adl_total (自理能力评分)', fontsize=12)
-        ax.set_ylabel('预测风险概率', fontsize=12)
-        ax.set_title('adl_total与预测风险概率的关系', fontsize=14)
-        ax.grid(True, alpha=0.3)
-        ax.axhline(y=0.7, color='red', linestyle='--', alpha=0.5, label='高风险阈值 (70%)')
-        ax.axhline(y=0.3, color='orange', linestyle='--', alpha=0.5, label='中风险阈值 (30%)')
-        ax.legend()
-        ax.set_ylim(0, 1)
-        
-        st.pyplot(fig)
-        plt.close(fig)
-        
-        # 判断趋势
-        if prob_list[0] > prob_list[-1]:
-            st.success("✅ **趋势正确**：adl_total越高，风险越低")
-            if transform_adl:
-                st.info("注意：由于启用了转换，输入的高分（自理能力好）会被转换为低分（自理能力差），从而正确反映风险关系。")
-        else:
-            st.error("❌ **趋势错误**：adl_total越高，风险越高")
-            st.warning("请检查adl_total转换设置是否正确")
+                st.error("❌ **趋势错误**：adl_total越高，风险越高")
     
-    # LIME解释
-    st.subheader("🔍 LIME特征贡献解释")
-    st.markdown("下图展示了各特征对预测结果的贡献程度（红色=增加风险，蓝色=降低风险）")
-    
-    # 尝试生成LIME解释
-    try:
-        available_features = [f for f in feature_names if f in test_dataset.columns]
+    # LIME解释（也根据诊断开关控制是否显示）
+    if show_diagnosis:
+        st.subheader("🔍 LIME特征贡献解释")
+        st.markdown("下图展示了各特征对预测结果的贡献程度（红色=增加风险，蓝色=降低风险）")
         
-        if len(available_features) < len(feature_names):
-            st.warning(f"⚠️ LIME解释功能需要完整的特征列")
-            st.warning(f"缺少的特征: {set(feature_names) - set(available_features)}")
-            st.info("预测功能正常，但特征解释图无法显示。")
-        else:
-            X_train_lime = test_dataset[feature_names].values
+        # 尝试生成LIME解释
+        try:
+            available_features = [f for f in feature_names if f in test_dataset.columns]
             
-            lime_explainer = LimeTabularExplainer(
-                training_data=X_train_lime,
-                feature_names=feature_names,
-                class_names=['低风险', '高风险'],
-                mode='classification',
-                discretize_continuous=True
-            )
-            
-            lime_exp = lime_explainer.explain_instance(
-                data_row=input_df.values.flatten(),
-                predict_fn=model.predict_proba,
-                num_features=10
-            )
-            
-            lime_html = lime_exp.as_html(show_table=True)
-            components.html(lime_html, height=600, scrolling=True)
-            
-    except Exception as e:
-        st.warning(f"⚠️ LIME解释生成失败: {e}")
-        st.info("预测结果仍然有效，LIME功能暂时不可用。")
+            if len(available_features) < len(feature_names):
+                st.warning(f"⚠️ LIME解释功能需要完整的特征列")
+                st.warning(f"缺少的特征: {set(feature_names) - set(available_features)}")
+                st.info("预测功能正常，但特征解释图无法显示。")
+            else:
+                X_train_lime = test_dataset[feature_names].values
+                
+                lime_explainer = LimeTabularExplainer(
+                    training_data=X_train_lime,
+                    feature_names=feature_names,
+                    class_names=['低风险', '高风险'],
+                    mode='classification',
+                    discretize_continuous=True
+                )
+                
+                lime_exp = lime_explainer.explain_instance(
+                    data_row=input_df.values.flatten(),
+                    predict_fn=model.predict_proba,
+                    num_features=10
+                )
+                
+                lime_html = lime_exp.as_html(show_table=True)
+                components.html(lime_html, height=600, scrolling=True)
+                
+        except Exception as e:
+            st.warning(f"⚠️ LIME解释生成失败: {e}")
+            st.info("预测结果仍然有效，LIME功能暂时不可用。")
     
     # 添加使用说明
     st.markdown("---")
