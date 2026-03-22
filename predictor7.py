@@ -102,7 +102,7 @@ with col1:
         value=50.0, 
         step=1.0, 
         format="%.2f",
-        help="日常生活能力评分（0-100分），分数越高自理能力越好"
+        help="日常生活能力评分（0-100分）。⚠️ 分数越高，自理能力越好，症状性出血风险越低。"
     )
 
 with col2:
@@ -209,20 +209,26 @@ if st.button("预测", type="primary"):
     st.subheader("💡 健康建议")
     st.info(advice)
     
-    # 风险提示条
+    # 风险提示条 - 使用 st.metric 和自定义进度条
     st.subheader("📈 风险可视化")
     
-    # 显示进度条 - 修复版本
-    col_bar1, col_bar2, col_bar3 = st.columns([3, 1, 1])
-    with col_bar1:
-        # 先显示进度条
-        progress_bar = st.progress(0)
-        progress_bar.progress(risk_prob)
-        # 显示概率文本
-        st.caption(f"风险概率: {risk_prob:.1%}")
-    with col_bar2:
+    # 使用三列布局
+    col1_metric, col2_metric, col3_metric = st.columns([2, 1, 1])
+    with col1_metric:
+        # 使用 metric 显示风险概率
+        st.metric("风险概率", f"{risk_prob:.1%}", delta=None)
+        # 使用简单的进度条（用 st.markdown 模拟）
+        progress_width = int(risk_prob * 100)
+        st.markdown(f"""
+        <div style="width: 100%; background-color: #f0f0f0; border-radius: 5px; margin-top: 10px;">
+            <div style="width: {progress_width}%; background-color: {risk_color}; border-radius: 5px; padding: 3px 0; text-align: center; color: white;">
+                {risk_prob:.1%}
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+    with col2_metric:
         st.markdown("**阈值说明**")
-    with col_bar3:
+    with col3_metric:
         st.markdown("🔵 低风险: <30%<br>🟡 中风险: 30%-70%<br>🔴 高风险: >70%", unsafe_allow_html=True)
     
     # 显示输入摘要
