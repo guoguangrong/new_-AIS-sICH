@@ -15,12 +15,12 @@ st.set_page_config(
 # 加载模型
 @st.cache_resource
 def load_model():
-    return joblib.load('xgboost.pkl')
+    return joblib.load('stacking.pkl')
 
 try:
     model = load_model()
 except FileNotFoundError:
-    st.error("❌ xgboost.pkl 文件未找到，请确保该文件存在于项目目录中")
+    st.error("❌ stacking.pkl 文件未找到，请确保该文件存在于项目目录中")
     st.stop()
 except Exception as e:
     st.error(f"❌ 模型加载失败: {e}")
