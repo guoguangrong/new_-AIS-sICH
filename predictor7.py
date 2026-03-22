@@ -8,9 +8,19 @@ import streamlit.components.v1 as components
 import warnings
 warnings.filterwarnings('ignore')
 
-# 加载模型和数据 - 更新文件名以匹配实际文件
-model = joblib.load('xgboost.pkl')  # 原为 xgboost_12.pkl，现改为 xgboost.pkl
-test_dataset = pd.read_csv('test_dataset.csv')  # 注意：您提供的文件列表中没有 test_dataset.csv，请确保该文件存在
+# 加载模型和数据 - 直接使用 data.xlsx 文件
+model = joblib.load('xgboost.pkl')
+
+# 从 Excel 文件读取数据用于 LIME 解释器
+try:
+    test_dataset = pd.read_excel('data.xlsx')
+    st.success("✅ 数据文件加载成功")
+except FileNotFoundError:
+    st.error("❌ data.xlsx 文件未找到，请确保该文件存在于项目目录中。")
+    st.stop()
+except Exception as e:
+    st.error(f"❌ 数据文件加载失败: {e}")
+    st.stop()
 
 # 按照指定顺序排列10个特征变量
 feature_names = [
@@ -25,6 +35,12 @@ feature_names = [
     "aptt_total",        # 基线APTT
     "anc_total"          # 基线ANC
 ]
+
+# 检查数据中是否包含所有需要的特征列
+missing_features = [f for f in feature_names if f not in test_dataset.columns]
+if missing_features:
+    st.warning(f"⚠️ 数据文件中缺少以下特征列: {missing_features}")
+    st.info("LIME解释功能可能无法正常工作，但预测功能仍然可用。")
 
 st.set_page_config(
     page_title="急性缺血性脑卒中血管内治疗术后症状性出血转化风险预测器",
@@ -148,8 +164,12 @@ if st.button("预测", type="primary"):
     input_df = pd.DataFrame([feature_values], columns=feature_names)
     
     # 模型预测
-    proba = model.predict_proba(input_df)[0]
-    risk_prob = proba[1]  # 高风险概率
+    try:
+        proba = model.predict_proba(input_df)[0]
+        risk_prob = proba[1]  # 高风险概率
+    except Exception as e:
+        st.error(f"模型预测失败: {e}")
+        st.stop()
     
     # 根据阈值划分风险等级 (3:7 = 30% 和 70%)
     # 低风险: < 30%, 中风险: 30% - 70%, 高风险: > 70%
@@ -222,40 +242,45 @@ if st.button("预测", type="primary"):
         })
         st.dataframe(input_summary, use_container_width=True, hide_index=True)
     
-    # LIME解释
+    # LIME解释 - 添加错误处理
     st.subheader("🔍 LIME特征贡献解释")
     st.markdown("下图展示了各特征对预测结果的贡献程度（红色=增加风险，蓝色=降低风险）")
     
     # 确保训练数据包含当前使用的特征
-    # 注意：如果 test_dataset.csv 文件不存在，需要根据 data.xlsx 生成
     try:
-        X_train_lime = test_dataset[feature_names].values
-    except FileNotFoundError:
-        st.error("test_dataset.csv 文件未找到，请确保该文件存在于项目目录中。")
-        st.stop()
-    except KeyError as e:
-        st.error(f"训练数据中缺少特征: {e}。请检查 test_dataset.csv 是否包含所需特征列。")
-        st.stop()
-    
-    # 创建LIME解释器
-    lime_explainer = LimeTabularExplainer(
-        training_data=X_train_lime,
-        feature_names=feature_names,
-        class_names=['低风险', '高风险'],
-        mode='classification',
-        discretize_continuous=True
-    )
-    
-    # 生成解释
-    lime_exp = lime_explainer.explain_instance(
-        data_row=input_df.values.flatten(),
-        predict_fn=model.predict_proba,
-        num_features=10
-    )
-    
-    # 显示LIME结果
-    lime_html = lime_exp.as_html(show_table=True)
-    components.html(lime_html, height=600, scrolling=True)
+        # 检查是否有缺失的特征
+        available_features = [f for f in feature_names if f in test_dataset.columns]
+        
+        if len(available_features) < len(feature_names):
+            st.warning(f"⚠️ LIME解释功能需要以下特征: {feature_names}")
+            st.warning(f"可用特征: {available_features}")
+            st.info("预测功能正常，但特征解释图可能无法显示。")
+        else:
+            X_train_lime = test_dataset[feature_names].values
+            
+            # 创建LIME解释器
+            lime_explainer = LimeTabularExplainer(
+                training_data=X_train_lime,
+                feature_names=feature_names,
+                class_names=['低风险', '高风险'],
+                mode='classification',
+                discretize_continuous=True
+            )
+            
+            # 生成解释
+            lime_exp = lime_explainer.explain_instance(
+                data_row=input_df.values.flatten(),
+                predict_fn=model.predict_proba,
+                num_features=10
+            )
+            
+            # 显示LIME结果
+            lime_html = lime_exp.as_html(show_table=True)
+            components.html(lime_html, height=600, scrolling=True)
+            
+    except Exception as e:
+        st.warning(f"⚠️ LIME解释生成失败: {e}")
+        st.info("预测结果仍然有效，LIME功能暂时不可用。")
     
     # 添加使用说明
     st.markdown("---")
